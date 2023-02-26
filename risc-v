@@ -1,1 +1,259 @@
 
+.eqv BMP_FILE_SIZE 230456
+.eqv BYTES_PER_ROW 960
+
+	.data
+#space for the 320x240px 24-bits bmp image
+.align 4
+res:	.space 2
+image:	.space BMP_FILE_SIZE
+oname: .asciz "final2.bmp"
+fname:	.asciz "racoon.bmp"
+prompt1: .asciz "Give x0 and x1 coordinates (starting and ending in x-axis)\n"
+bonus: .asciz "x1: \n"
+prompt2: .asciz  "Give y0 and y1 coordinates (starting and ending in y-axis)\n"
+bonus1: .asciz "y1: \n"
+prompt3: .asciz "Give treshold value for the conversion\n"
+
+	.text
+main:
+
+	jal	read_bmp
+	jal 	get_inputs
+	#li t6, 50
+	#li s9, 50
+	#li a3, 200
+	#li a4, 200
+	#li s11, 30
+	li s7,100
+	mul s11,s11,s7
+	addi s9,s9,-1
+
+	
+	loop1:
+	mv s10,t6
+	addi s9,s9,1
+	bgt s9,a3, save
+	j loop2	
+
+	loop2:
+	mv a0, s10
+	mv a1, s9
+	jal get_pixel
+	mv s8,a0
+	mv a0,s10
+	bgt s8,s11 change_color_W
+	ble s8,s11 change_color_B
+	back:
+	addi s10, s10,1
+	bgt s10,a4, loop1
+	j loop2
+	
+save:
+	jal	save_bmp
+
+exit:	li 	a7,10		#Terminate the program
+	ecall
+
+# ============================================================================
+change_color_B:
+	li a2, 0x00000000 	#color - 00RRGGBB
+	jal    put_pixel
+	j back
+
+change_color_W:
+	li a2, 0x00FFFFFF	#color - 00RRGGBB
+	jal    put_pixel
+	j back
+	
+read_bmp:
+#description: 
+#	reads the contents of a bmp file into memory
+#arguments:
+#	none
+#return value: none
+	addi sp, sp, -4		#push $s1
+	sw s1, 0(sp)
+#open file
+	li a7, 1024
+        la a0, fname		#file name 
+        li a1, 0		#flags: 0-read file
+        ecall
+	mv s1, a0      # save the file descriptor
+	
+#check for errors - if the file was opened
+#...
+
+#read file
+	li a7, 63
+	mv a0, s1
+	la a1, image
+	li a2, BMP_FILE_SIZE
+	ecall
+
+#close file
+	li a7, 57
+	mv a0, s1
+        ecall
+	
+	lw s1, 0(sp)		#restore (pop) s1
+	addi sp, sp, 4
+	jr ra
+
+# ============================================================================
+save_bmp:
+#description: 
+#	saves bmp file stored in memory to a file
+#arguments:
+#	none
+#return value: none
+	addi sp, sp, -4		#push s1
+	sw s1, (sp)
+#open file
+	li a7, 1024
+        la a0, oname		#file name 
+        li a1, 1		#flags: 1-write file
+        ecall
+	mv s1, a0      # save the file descriptor
+	
+#check for errors - if the file was opened
+#...
+
+#save file
+	li a7, 64
+	mv a0, s1
+	la a1, image
+	li a2, BMP_FILE_SIZE
+	ecall
+
+#close file
+	li a7, 57
+	mv a0, s1
+        ecall
+	
+	lw s1, (sp)		#restore (pop) $s1
+	addi sp, sp, 4
+	jr ra
+
+
+# ============================================================================
+put_pixel:
+#description: 
+#	sets the color of specified pixel
+#arguments:
+#	a0 - x coordinate
+#	a1 - y coordinate - (0,0) - bottom left corner
+#	a2 - 0RGB - pixel color
+#return value: none
+
+	la t1, image	#adress of file offset to pixel array
+	addi t1,t1,10
+	lw t2, (t1)		#file offset to pixel array in $t2
+	la t1, image		#adress of bitmap
+	add t2, t1, t2	#adress of pixel array in $t2
+	
+	#pixel address calculation
+	li t4,BYTES_PER_ROW
+	mul t1, a1, t4 #t1= y*BYTES_PER_ROW
+	mv t3, a0		
+	slli a0, a0, 1
+	add t3, t3, a0	#$t3= 3*x
+	add t1, t1, t3	#$t1 = 3x + y*BYTES_PER_ROW
+	add t2, t2, t1	#pixel address 
+	
+	#set new color
+	sb a2,(t2)		#store B
+	srli a2,a2,8
+	sb a2,1(t2)		#store G
+	srli a2,a2,8
+	sb a2,2(t2)		#store R
+
+	jr ra
+# ============================================================================
+get_pixel:
+#description: 
+#	returns color of specified pixel
+#arguments:
+#	a0 - x coordinate
+#	a1 - y coordinate - (0,0) - bottom left corner
+#return value:
+#	a0 - 0RGB - pixel color
+
+	la t1, image		#adress of file offset to pixel array
+	addi t1,t1,10
+	lw t2, (t1)		#file offset to pixel array in $t2
+	la t1, image		#adress of bitmap
+	add t2, t1, t2		#adress of pixel array in $t2
+	
+	#pixel address calculation
+	li t4,BYTES_PER_ROW
+	mul t1, a1, t4 		#t1= y*BYTES_PER_ROW
+	mv t3, a0		
+	slli a0, a0, 1
+	add t3, t3, a0		#$t3= 3*x
+	add t1, t1, t3		#$t1 = 3x + y*BYTES_PER_ROW
+	add t2, t2, t1	#pixel address 
+	
+	#get color
+	lbu a0,(t2)		#load B
+	mv s2, a0
+	lbu t1,1(t2)		#load G
+	#slli t1,t1,8
+	mv s3, t1
+	#or a0, a0, t1
+	lbu t1,2(t2)		#load R
+        #slli t1,t1,16
+        mv s4, t1
+	#or a0, a0, t1
+	li s6, 7
+	mul s2,s2,s6
+	li s6,72
+	mul s3,s3,s6
+	li s6, 21
+	mul s4,s4,s6
+	add s2,s2,s3
+	add,s2,s2,s4
+	mv a0,s2				
+	jr ra
+
+
+# ============================================================================
+get_inputs:
+
+#reading the x values
+	li a7, 4 
+	la a0, prompt1
+	ecall
+	li a7, 5 
+	ecall
+	mv t6, a0
+	li a7, 4 
+	la a0, bonus
+	ecall
+	li a7, 5
+	ecall
+	mv a4,a0
+#reading the y values
+
+
+	li a7, 4 
+	la a0, prompt2
+	ecall
+	li a7, 5 
+	ecall
+	mv s9, a0
+	li a7, 4 
+	la a0, bonus1
+	ecall
+	li a7, 5
+	ecall
+	mv a3, a0
+#reading treshold value
+
+	li a7, 4 
+	la a0, prompt3
+	ecall
+	li a7, 5 
+	ecall
+	mv s11,a0
+	jr ra 
